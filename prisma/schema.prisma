@@ -1,0 +1,226 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id                String       @id @default(cuid())
+  name              String
+  email             String       @unique
+  username          String       @unique
+  passwordHash      String
+  weightKg          Float        @default(75)
+  gender            Gender?
+  drinkingGoal      DrinkingGoal @default(TRACK_ONLY)
+  notificationStyle NotificationStyle @default(FUNNY)
+  privacyDefault    Visibility   @default(FRIENDS)
+  onboardingCompleted Boolean    @default(false)
+  createdAt         DateTime     @default(now())
+
+  drinkLogs          DrinkLog[]
+  sessions           Session[]
+  activities         Activity[]
+  reactions          Reaction[]
+  comments           Comment[]
+  achievements       UserAchievement[]
+  checkIns           CheckIn[]
+  sentFriendships    Friendship[] @relation("FriendshipRequester")
+  receivedFriendships Friendship[] @relation("FriendshipReceiver")
+}
+
+model DrinkLog {
+  id                    String     @id @default(cuid())
+  userId                String
+  drinkType             DrinkType
+  drinkName             String
+  volumeMl              Float
+  abv                   Float
+  price                 Float
+  location              String?
+  notes                 String?
+  loggedAt              DateTime
+  caloriesEstimate      Float
+  alcoholGramsEstimate  Float
+  visibility            Visibility @default(FRIENDS)
+  sessionId             String?
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session    Session?   @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  activities Activity[]
+
+  @@index([userId, loggedAt])
+  @@index([sessionId])
+}
+
+model Session {
+  id            String    @id @default(cuid())
+  userId        String
+  title         String
+  startTime     DateTime
+  endTime       DateTime?
+  totalDrinks   Int       @default(0)
+  totalCalories Float     @default(0)
+  totalSpent    Float     @default(0)
+  location      String?
+  createdAt     DateTime  @default(now())
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  drinkLogs  DrinkLog[]
+  activities Activity[]
+
+  @@index([userId, startTime])
+}
+
+model Friendship {
+  id          String           @id @default(cuid())
+  requesterId String
+  receiverId  String
+  status      FriendshipStatus @default(PENDING)
+  createdAt   DateTime         @default(now())
+
+  requester User @relation("FriendshipRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  receiver  User @relation("FriendshipReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([requesterId, receiverId])
+}
+
+model Activity {
+  id         String       @id @default(cuid())
+  userId     String
+  type       ActivityType
+  message    String
+  createdAt  DateTime     @default(now())
+  drinkLogId String?
+  sessionId  String?
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  drinkLog DrinkLog? @relation(fields: [drinkLogId], references: [id], onDelete: SetNull)
+  session  Session?  @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  reactions Reaction[]
+  comments Comment[]
+
+  @@index([createdAt])
+}
+
+model Reaction {
+  id         String   @id @default(cuid())
+  userId     String
+  activityId String
+  type       ReactionType
+  createdAt  DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, activityId, type])
+  @@index([activityId, type])
+}
+
+model Comment {
+  id         String   @id @default(cuid())
+  userId     String
+  activityId String
+  text       String
+  createdAt  DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+}
+
+model UserAchievement {
+  id        String   @id @default(cuid())
+  userId    String
+  code      AchievementCode
+  title     String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, code])
+}
+
+model CheckIn {
+  id        String   @id @default(cuid())
+  userId    String
+  location  String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, location])
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum DrinkingGoal {
+  TRACK_ONLY
+  REDUCE_DRINKING
+  SOBER_STREAK
+  SOCIAL_DISCOVERY
+}
+
+enum NotificationStyle {
+  SERIOUS
+  FUNNY
+  CHAOS
+}
+
+enum DrinkType {
+  BEER
+  WINE
+  WHISKY
+  VODKA
+  GIN
+  RUM
+  TEQUILA
+  COCKTAIL
+  OTHER
+}
+
+enum Visibility {
+  PUBLIC
+  FRIENDS
+  PRIVATE
+}
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+  BLOCKED
+}
+
+enum ActivityType {
+  DRINK_LOGGED
+  SESSION_STARTED
+  SESSION_COMPLETED
+  BADGE_UNLOCKED
+  ACHIEVEMENT_UNLOCKED
+  CHECK_IN
+  FRIEND_ADDED
+}
+
+enum ReactionType {
+  CHEERS
+  LEGENDARY
+  CHAOS
+  RIP_TOMORROW
+  RESPECT
+}
+
+enum AchievementCode {
+  FIRST_ROUND
+  COCKTAIL_EXPLORER
+  WINE_ENJOYER
+  FINANCIAL_MISTAKE
+  BAR_HOPPER
+  RESPONSIBLE_HUMAN
+}
