@@ -14,10 +14,31 @@ export async function PATCH(request: NextRequest) {
   if (!user) return apiError("Unauthorized", 401);
 
   const body = await request.json();
-  const schema = body.onboardingCompleted === true ? onboardingSchema : profileSchema;
-  const parsed = schema.safeParse(body);
-  if (!parsed.success) return apiError(parsed.error.errors[0]?.message ?? "Invalid profile.");
+  if (body.onboardingCompleted === true) {
+    const parsed = onboardingSchema.safeParse(body);
+    if (!parsed.success) return apiError(parsed.error.errors[0]?.message ?? "Invalid profile.");
 
+    const data = parsed.data;
+    const usernameTaken = await prisma.user.findFirst({ where: { username: data.username, NOT: { id: user.id } } });
+    if (usernameTaken) return apiError("Username is already taken.", 409);
+
+    const updated = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        username: data.username,
+        weightKg: data.weightKg,
+        drinkingGoal: data.drinkingGoal,
+        notificationStyle: data.notificationStyle,
+        onboardingCompleted: true,
+        ageConfirmedAt: new Date(),
+      },
+    });
+
+    return json({ user: publicUser(updated) });
+  }
+
+  const parsed = profileSchema.safeParse(body);
+  if (!parsed.success) return apiError(parsed.error.errors[0]?.message ?? "Invalid profile.");
   const data = parsed.data;
   const usernameTaken = await prisma.user.findFirst({ where: { username: data.username, NOT: { id: user.id } } });
   if (usernameTaken) return apiError("Username is already taken.", 409);
@@ -25,9 +46,13 @@ export async function PATCH(request: NextRequest) {
   const updated = await prisma.user.update({
     where: { id: user.id },
     data: {
-      ...data,
-      gender: "gender" in data ? data.gender || null : user.gender,
-      onboardingCompleted: body.onboardingCompleted === true ? true : user.onboardingCompleted,
+      name: data.name,
+      username: data.username,
+      weightKg: data.weightKg,
+      gender: data.gender || null,
+      drinkingGoal: data.drinkingGoal,
+      notificationStyle: data.notificationStyle,
+      privacyDefault: data.privacyDefault,
     },
   });
 

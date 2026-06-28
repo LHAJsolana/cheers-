@@ -10,7 +10,7 @@ export function calculateAlcoholGrams(volumeMl: number, abv: number) {
 export function estimateCalories(drinkType: DrinkType, volumeMl: number, abv: number) {
   const alcoholCalories = calculateAlcoholGrams(volumeMl, abv) * 7;
   const multiplier: Record<DrinkType, number> = {
-    BEER: 1.25,
+    BEER: 1.55,
     WINE: 1.15,
     WHISKY: 1.05,
     VODKA: 1.05,

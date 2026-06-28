@@ -20,6 +20,8 @@ export const drinkLogSchema = z.object({
   price: z.coerce.number().min(0).max(100000),
   location: z.string().trim().max(80).optional(),
   notes: z.string().trim().max(240).optional(),
+  drinkPhotoUrl: z.string().max(800000).optional(),
+  placePhotoUrl: z.string().max(800000).optional(),
   loggedAt: z.string().min(1),
   visibility: z.nativeEnum(Visibility),
   checkIn: z
@@ -47,4 +49,8 @@ export const onboardingSchema = z.object({
   weightKg: z.coerce.number().min(30).max(250),
   notificationStyle: z.nativeEnum(NotificationStyle),
   drinkingGoal: z.nativeEnum(DrinkingGoal),
+  ageConfirmed: z
+    .union([z.boolean(), z.literal("on"), z.literal("true")])
+    .transform((value) => value === true || value === "on" || value === "true")
+    .refine(Boolean, "Tap the 18+ badge to enter."),
 });

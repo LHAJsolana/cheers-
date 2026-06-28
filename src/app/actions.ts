@@ -1,16 +1,21 @@
 "use server";
 
-import { ActivityType, FriendshipStatus, type ReactionType } from "@prisma/client";
+import { ActivityType, type ReactionType } from "@prisma/client";
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { hashPassword, requireUser, setSession, verifyPassword, clearSession } from "@/lib/auth";
+import { isPresetComment } from "@/lib/comment-presets";
 import {
   calculateAlcoholGrams,
   estimateCalories,
   generateFunnyNotification,
 } from "@/lib/drinks";
 import { checkAchievements } from "@/lib/achievements";
+import { drinkActivityRecords } from "@/lib/drink-activity";
+import { addFriendByUsername, respondToFriendRequest } from "@/lib/friends";
 import { prisma } from "@/lib/prisma";
+import { authRateLimitKey, checkRateLimit } from "@/lib/rate-limit";
 import { addDrinkToSession, closeExpiredSessions, getOrCreateSession } from "@/lib/sessions";
 import { drinkLogSchema, friendSchema, loginSchema, onboardingSchema, profileSchema, signupSchema } from "@/lib/validators";
 
@@ -22,6 +27,8 @@ export type ActionState = {
 export async function signupAction(_: ActionState, formData: FormData): Promise<ActionState> {
   const parsed = signupSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.errors[0]?.message ?? "Invalid sign up details" };
+  const limited = await authAttemptError("signup", parsed.data.email);
+  if (limited) return limited;
 
   const { name, email, password } = parsed.data;
   const username = await uniqueUsername(name, email);
@@ -52,6 +59,8 @@ export async function signupAction(_: ActionState, formData: FormData): Promise<
 export async function loginAction(_: ActionState, formData: FormData): Promise<ActionState> {
   const parsed = loginSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: "Invalid email or password." };
+  const limited = await authAttemptError("login", parsed.data.email);
+  if (limited) return limited;
 
   const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
   if (!user || !(await verifyPassword(parsed.data.password, user.passwordHash))) {
@@ -91,6 +100,8 @@ export async function logDrinkAction(_: ActionState, formData: FormData): Promis
       price: data.price,
       location: data.location || null,
       notes: data.notes || null,
+      drinkPhotoUrl: await fileToDataUrl(formData.get("drinkPhoto")),
+      placePhotoUrl: await fileToDataUrl(formData.get("placePhoto")),
       loggedAt,
       visibility: data.visibility,
       caloriesEstimate,
@@ -104,37 +115,14 @@ export async function logDrinkAction(_: ActionState, formData: FormData): Promis
   const sessionDrinkCount = await prisma.drinkLog.count({ where: { sessionId: session.id } });
 
   await prisma.activity.createMany({
-    data: [
-      {
-        userId: user.id,
-        drinkLogId: drinkLog.id,
-        sessionId: session.id,
-        type: ActivityType.DRINK_LOGGED,
-        message,
-      },
-      ...(sessionDrinkCount === 1
-        ? [
-            {
-              userId: user.id,
-              drinkLogId: drinkLog.id,
-              sessionId: session.id,
-              type: ActivityType.SESSION_STARTED,
-              message: `${user.name} started ${session.title}.`,
-            },
-          ]
-        : []),
-      ...(data.checkIn && data.location
-        ? [
-            {
-              userId: user.id,
-              drinkLogId: drinkLog.id,
-              sessionId: session.id,
-              type: ActivityType.CHECK_IN,
-              message: `${user.name} checked in at ${data.location}.`,
-            },
-          ]
-        : []),
-    ],
+    data: drinkActivityRecords({
+      user,
+      drinkLog,
+      session,
+      message,
+      isFirstSessionDrink: sessionDrinkCount === 1,
+      checkIn: data.checkIn,
+    }),
   });
 
   if (data.checkIn && data.location) {
@@ -165,30 +153,42 @@ export async function reactToActivityAction(activityId: string, type: ReactionTy
   revalidatePath("/activity");
 }
 
+export async function addPresetCommentAction(activityId: string, text: string) {
+  const user = await requireUser();
+  if (!isPresetComment(text)) return;
+
+  await prisma.comment.create({
+    data: {
+      userId: user.id,
+      activityId,
+      text,
+    },
+  });
+
+  revalidatePath("/activity");
+}
+
 export async function addFriendAction(_: ActionState, formData: FormData): Promise<ActionState> {
   const user = await requireUser();
   const parsed = friendSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: "Enter a valid username." };
 
-  const receiver = await prisma.user.findUnique({ where: { username: parsed.data.username } });
-  if (!receiver || receiver.id === user.id) return { error: "No matching friend found." };
-
-  await prisma.friendship.upsert({
-    where: { requesterId_receiverId: { requesterId: user.id, receiverId: receiver.id } },
-    update: { status: FriendshipStatus.PENDING },
-    create: { requesterId: user.id, receiverId: receiver.id, status: FriendshipStatus.PENDING },
-  });
-
-  await prisma.activity.create({
-    data: {
-      userId: user.id,
-      type: ActivityType.FRIEND_ADDED,
-      message: `${user.name} sent ${receiver.name} a friend request.`,
-    },
-  });
+  try {
+    await addFriendByUsername(user, parsed.data.username);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Could not add friend." };
+  }
 
   revalidatePath("/friends");
+  revalidatePath("/activity");
   return { ok: true };
+}
+
+export async function respondToFriendRequestAction(friendshipId: string, action: "accept" | "reject") {
+  const user = await requireUser();
+  await respondToFriendRequest(user, friendshipId, action);
+  revalidatePath("/friends");
+  revalidatePath("/activity");
 }
 
 export async function updateProfileAction(_: ActionState, formData: FormData): Promise<ActionState> {
@@ -238,6 +238,7 @@ export async function completeOnboardingAction(_: ActionState, formData: FormDat
       notificationStyle: parsed.data.notificationStyle,
       drinkingGoal: parsed.data.drinkingGoal,
       onboardingCompleted: true,
+      ageConfirmedAt: new Date(),
     },
   });
 
@@ -265,4 +266,25 @@ async function uniqueUsername(name: string, email: string) {
     index += 1;
   }
   return candidate;
+}
+
+async function authAttemptError(scope: "login" | "signup", identifier: string): Promise<ActionState | null> {
+  const headerStore = await headers();
+  const ip = headerStore.get("x-forwarded-for")?.split(",")[0]?.trim() ?? headerStore.get("x-real-ip");
+  const result = checkRateLimit(authRateLimitKey(ip, scope, identifier), {
+    limit: 8,
+    windowMs: 15 * 60 * 1000,
+  });
+
+  if (result.allowed) return null;
+  return { error: `Too many attempts. Try again in ${result.retryAfterSeconds} seconds.` };
+}
+
+async function fileToDataUrl(value: FormDataEntryValue | null) {
+  if (!(value instanceof File) || value.size === 0) return null;
+  if (!value.type.startsWith("image/")) throw new Error("Use an image file.");
+  if (value.size > 750_000) throw new Error("Keep photos under 750 KB for now.");
+
+  const bytes = Buffer.from(await value.arrayBuffer());
+  return `data:${value.type};base64,${bytes.toString("base64")}`;
 }

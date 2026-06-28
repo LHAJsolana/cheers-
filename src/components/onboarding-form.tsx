@@ -52,6 +52,10 @@ export function OnboardingForm({ username, weightKg }: { username: string; weigh
             {drinkingGoals.map((goal) => <option key={goal} value={goal}>{goalLabel(goal)}</option>)}
           </select>
         </div>
+        <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-neon/30 bg-neon/10 px-4 py-3 text-left text-sm font-black text-slate-100">
+          <input name="ageConfirmed" type="checkbox" required className="h-5 w-5 accent-lime-300" />
+          <span>I&apos;m 18+ <span className="font-semibold text-slate-400">Old enough to enter the chaos.</span></span>
+        </label>
         {state.error ? <p className="text-sm text-ember">{state.error}</p> : null}
         <button className="btn-primary" disabled={pending}>{pending ? "Opening Cheers..." : "Finish"}</button>
         <button type="button" className="text-sm text-slate-400" onClick={() => setStep(2)}>Back</button>

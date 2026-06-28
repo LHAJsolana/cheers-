@@ -1,25 +1,23 @@
 import { MessageCircle } from "lucide-react";
-import { reactToActivityAction } from "@/app/actions";
+import Image from "next/image";
+import Link from "next/link";
+import { addPresetCommentAction, reactToActivityAction } from "@/app/actions";
 import { AppShell } from "@/components/app-shell";
 import { requireUser } from "@/lib/auth";
+import { presetComments } from "@/lib/comment-presets";
+import { getAcceptedFriendIds, visibleActivityWhere } from "@/lib/friends";
 import { titleEnum } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { reactionOptions } from "@/lib/reactions";
 import { closeExpiredSessions } from "@/lib/sessions";
-import Link from "next/link";
 
 export default async function ActivityPage() {
   const user = await requireUser();
   await closeExpiredSessions(user.id);
+  const acceptedFriendIds = await getAcceptedFriendIds(user.id);
   const activities = await prisma.activity.findMany({
-    where: {
-      OR: [
-        { userId: user.id },
-        { drinkLog: { visibility: { in: ["PUBLIC", "FRIENDS"] } } },
-        { drinkLogId: null },
-      ],
-    },
-    include: { user: true, drinkLog: true, reactions: true, comments: true },
+    where: visibleActivityWhere(user.id, acceptedFriendIds),
+    include: { user: true, drinkLog: true, reactions: true, comments: { include: { user: true }, orderBy: { createdAt: "desc" } } },
     orderBy: { createdAt: "desc" },
     take: 40,
   });
@@ -56,6 +54,12 @@ export default async function ActivityPage() {
                 <p className="mt-2 text-xs text-slate-500">{activity.createdAt.toLocaleString()}</p>
                 {activity.drinkLog ? (
                   <div className="mt-3 rounded-xl bg-white/5 p-3 text-sm text-slate-300">
+                    {activity.drinkLog.drinkPhotoUrl || activity.drinkLog.placePhotoUrl ? (
+                      <div className="mb-3 grid gap-2 sm:grid-cols-2">
+                        {activity.drinkLog.drinkPhotoUrl ? <Image src={activity.drinkLog.drinkPhotoUrl} alt={`${activity.drinkLog.drinkName} drink`} width={640} height={480} unoptimized className="h-48 w-full rounded-xl object-cover" /> : null}
+                        {activity.drinkLog.placePhotoUrl ? <Image src={activity.drinkLog.placePhotoUrl} alt={activity.drinkLog.location ?? "Place photo"} width={640} height={480} unoptimized className="h-48 w-full rounded-xl object-cover" /> : null}
+                      </div>
+                    ) : null}
                     <p className="font-bold text-white">{activity.drinkLog.drinkName}</p>
                     <p>{activity.drinkLog.volumeMl} ml · {activity.drinkLog.abv}% ABV · {activity.drinkLog.location ?? "mystery location"}</p>
                   </div>
@@ -74,10 +78,23 @@ export default async function ActivityPage() {
                   </form>
                 );
               })}
-              <button className="btn-secondary gap-2 py-2" disabled>
-                <MessageCircle size={16} /> Comment soon
-              </button>
+              {presetComments.map((text) => (
+                <form key={text} action={addPresetCommentAction.bind(null, activity.id, text)}>
+                  <button className="btn-secondary gap-2 py-2">
+                    <MessageCircle size={16} /> {text}
+                  </button>
+                </form>
+              ))}
             </div>
+            {activity.comments.length ? (
+              <div className="mt-4 flex flex-wrap gap-2 border-t border-white/10 pt-3">
+                {activity.comments.map((comment) => (
+                  <span key={comment.id} className="rounded-full bg-white/10 px-3 py-2 text-xs text-slate-200">
+                    <strong>{comment.user.name}:</strong> {comment.text}
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </article>
         ))}
       </div>

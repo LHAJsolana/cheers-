@@ -33,6 +33,16 @@ export function DrinkForm({ defaultVisibility }: { defaultVisibility: string }) 
         <label className="label">Location/bar</label>
         <input className="field" name="location" placeholder="Sky Bar" />
       </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-2">
+          <label className="label">Drink photo</label>
+          <input className="field" name="drinkPhoto" type="file" accept="image/*" />
+        </div>
+        <div className="grid gap-2">
+          <label className="label">Place photo</label>
+          <input className="field" name="placePhoto" type="file" accept="image/*" />
+        </div>
+      </div>
       <label className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
         <input name="checkIn" type="checkbox" className="h-4 w-4 accent-lime-300" />
         Check in here and post it to the feed

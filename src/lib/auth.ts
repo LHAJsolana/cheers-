@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 
 const SESSION_COOKIE = "cheers_session";
+const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 
 export async function hashPassword(password: string) {
   return bcrypt.hash(password, 12);
@@ -20,7 +21,7 @@ export async function setSession(userId: string) {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
-    maxAge: 60 * 60 * 24 * 30,
+    maxAge: SESSION_MAX_AGE_SECONDS,
     path: "/",
   });
 }
@@ -53,15 +54,19 @@ export async function requireUser() {
 }
 
 function signSession(userId: string) {
-  return `${userId}.${sessionSignature(userId)}`;
+  const expiresAt = Date.now() + SESSION_MAX_AGE_SECONDS * 1000;
+  const payload = `${userId}.${expiresAt}`;
+  return `${payload}.${sessionSignature(payload)}`;
 }
 
 function verifySession(value: string | undefined) {
   if (!value) return null;
-  const [userId, signature] = value.split(".");
-  if (!userId || !signature) return null;
+  const [userId, expiresAtValue, signature] = value.split(".");
+  if (!userId || !expiresAtValue || !signature) return null;
+  const expiresAt = Number(expiresAtValue);
+  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return null;
 
-  const expected = sessionSignature(userId);
+  const expected = sessionSignature(`${userId}.${expiresAtValue}`);
   const expectedBuffer = Buffer.from(expected);
   const actualBuffer = Buffer.from(signature);
   if (expectedBuffer.length !== actualBuffer.length) return null;
@@ -69,8 +74,8 @@ function verifySession(value: string | undefined) {
   return timingSafeEqual(expectedBuffer, actualBuffer) ? userId : null;
 }
 
-function sessionSignature(userId: string) {
+function sessionSignature(payload: string) {
   return createHmac("sha256", process.env.SESSION_SECRET ?? "local-dev-secret-change-me")
-    .update(userId)
+    .update(payload)
     .digest("hex");
 }

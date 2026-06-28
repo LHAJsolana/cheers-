@@ -22,7 +22,14 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Cheers uses photos so you can show the drink and the spot.",
+          "cameraPermission": "Cheers uses the camera so you can snap the drink and the spot."
+        }
+      ]
     ],
     "extra": {
       "router": {

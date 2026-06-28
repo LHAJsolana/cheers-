@@ -15,6 +15,7 @@ export type User = {
   notificationStyle: string;
   privacyDefault: string;
   onboardingCompleted: boolean;
+  ageConfirmedAt: string | null;
 };
 
 export async function getToken() {
@@ -78,9 +79,13 @@ export const endpoints = {
   feed: () => api<{ activities: Activity[] }>("/feed"),
   react: (activityId: string, type: string) =>
     api<{ active: boolean }>(`/feed/${activityId}/react`, { method: "POST", body: JSON.stringify({ type }) }),
+  comment: (activityId: string, text: string) =>
+    api<{ ok: boolean }>(`/feed/${activityId}/comment`, { method: "POST", body: JSON.stringify({ text }) }),
   friends: () => api<{ friends: Friend[] }>("/friends"),
   addFriend: (username: string) =>
     api<{ ok: boolean }>("/friends", { method: "POST", body: JSON.stringify({ username }) }),
+  respondFriend: (friendshipId: string, action: "accept" | "reject") =>
+    api<{ ok: boolean }>("/friends", { method: "PATCH", body: JSON.stringify({ friendshipId, action }) }),
   stats: () => api<StatsPayload>("/stats"),
 };
 
@@ -91,7 +96,7 @@ export type DashboardPayload = {
     spentThisWeek: number;
     soberStreak: number;
   };
-  safety: { bac: number; status: string; tip: string; disclaimer: string };
+  safety: { bac: number; status: string; tip: string; urgent: boolean; disclaimer: string };
   recap: {
     drinks: number;
     spent: number;
@@ -112,6 +117,9 @@ export type DrinkLog = {
   abv: number;
   price: number;
   location: string | null;
+  drinkPhotoUrl: string | null;
+  placePhotoUrl: string | null;
+  caloriesEstimate?: number;
   loggedAt: string;
   visibility: string;
 };
@@ -123,11 +131,13 @@ export type Activity = {
   user: User;
   drinkLog: DrinkLog | null;
   reactions: { id: string; userId: string; type: string }[];
+  comments: { id: string; text: string; user: User }[];
 };
 
 export type Friend = {
   id: string;
   status: string;
+  direction: "incoming" | "outgoing";
   friend: User;
 };
 

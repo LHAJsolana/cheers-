@@ -1,7 +1,9 @@
-import { ActivityType, FriendshipStatus, type ReactionType, type User } from "@prisma/client";
+import { type ReactionType, type User } from "@prisma/client";
 import { calculateAlcoholGrams, estimateBAC, estimateCalories, generateFunnyNotification, getFunnySafetyStatus } from "@/lib/drinks";
 import { alcoholFreeDaysThisWeek, currentSoberStreak, mostCommon, startOfWeek } from "@/lib/analytics";
 import { checkAchievements } from "@/lib/achievements";
+import { drinkActivityRecords } from "@/lib/drink-activity";
+import { getAcceptedFriendIds, visibleActivityWhere } from "@/lib/friends";
 import { prisma } from "@/lib/prisma";
 import { weeklyRecap } from "@/lib/recap";
 import { addDrinkToSession, closeExpiredSessions, getOrCreateSession } from "@/lib/sessions";
@@ -32,6 +34,7 @@ export async function getDashboardPayload(user: User) {
       bac,
       status: getFunnySafetyStatus(bac),
       tip: safetyTip(),
+      urgent: bac >= 0.06,
       disclaimer: "Do not drive after drinking. This is only an estimate and is not legal or medical advice.",
     },
     recap: weeklyRecap(logs),
@@ -62,6 +65,8 @@ export async function createDrinkFromApi(user: User, input: unknown) {
       price: data.price,
       location: data.location || null,
       notes: data.notes || null,
+      drinkPhotoUrl: data.drinkPhotoUrl || null,
+      placePhotoUrl: data.placePhotoUrl || null,
       loggedAt,
       visibility: data.visibility,
       caloriesEstimate,
@@ -74,15 +79,14 @@ export async function createDrinkFromApi(user: User, input: unknown) {
   const message = generateFunnyNotification(user.name, drinkLog, user.notificationStyle);
   const sessionDrinkCount = await prisma.drinkLog.count({ where: { sessionId: session.id } });
   await prisma.activity.createMany({
-    data: [
-      { userId: user.id, drinkLogId: drinkLog.id, sessionId: session.id, type: ActivityType.DRINK_LOGGED, message },
-      ...(sessionDrinkCount === 1
-        ? [{ userId: user.id, drinkLogId: drinkLog.id, sessionId: session.id, type: ActivityType.SESSION_STARTED, message: `${user.name} started ${session.title}.` }]
-        : []),
-      ...(data.checkIn && data.location
-        ? [{ userId: user.id, drinkLogId: drinkLog.id, sessionId: session.id, type: ActivityType.CHECK_IN, message: `${user.name} checked in at ${data.location}.` }]
-        : []),
-    ],
+    data: drinkActivityRecords({
+      user,
+      drinkLog,
+      session,
+      message,
+      isFirstSessionDrink: sessionDrinkCount === 1,
+      checkIn: data.checkIn,
+    }),
   });
 
   if (data.checkIn && data.location) {
@@ -94,15 +98,10 @@ export async function createDrinkFromApi(user: User, input: unknown) {
 
 export async function getFeedPayload(user: User) {
   await closeExpiredSessions(user.id);
+  const acceptedFriendIds = await getAcceptedFriendIds(user.id);
   return prisma.activity.findMany({
-    where: {
-      OR: [
-        { userId: user.id },
-        { drinkLog: { visibility: { in: ["PUBLIC", "FRIENDS"] } } },
-        { drinkLogId: null },
-      ],
-    },
-    include: { user: true, drinkLog: true, reactions: true, comments: true },
+    where: visibleActivityWhere(user.id, acceptedFriendIds),
+    include: { user: true, drinkLog: true, reactions: true, comments: { include: { user: true }, orderBy: { createdAt: "desc" } } },
     orderBy: { createdAt: "desc" },
     take: 50,
   });
@@ -116,26 +115,6 @@ export async function toggleReaction(user: User, activityId: string, type: React
   }
   await prisma.reaction.create({ data: { userId: user.id, activityId, type } });
   return { active: true };
-}
-
-export async function getFriendsPayload(user: User) {
-  return prisma.friendship.findMany({
-    where: { OR: [{ requesterId: user.id }, { receiverId: user.id }] },
-    include: { requester: true, receiver: true },
-    orderBy: { createdAt: "desc" },
-  });
-}
-
-export async function addFriendByUsername(user: User, username: string) {
-  const receiver = await prisma.user.findUnique({ where: { username } });
-  if (!receiver || receiver.id === user.id) throw new Error("No matching friend found.");
-
-  await prisma.friendship.upsert({
-    where: { requesterId_receiverId: { requesterId: user.id, receiverId: receiver.id } },
-    update: { status: FriendshipStatus.PENDING },
-    create: { requesterId: user.id, receiverId: receiver.id, status: FriendshipStatus.PENDING },
-  });
-  await prisma.activity.create({ data: { userId: user.id, type: ActivityType.FRIEND_ADDED, message: `${user.name} sent ${receiver.name} a friend request.` } });
 }
 
 export async function getStatsPayload(user: User) {

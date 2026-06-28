@@ -82,6 +82,7 @@ async function main() {
       { userId: maya.id, code: AchievementCode.FIRST_ROUND, title: "🍺 First Round", createdAt: hoursAgo(3) },
     ],
   });
+
   await prisma.activity.createMany({
     data: [
       { userId: taha.id, type: ActivityType.ACHIEVEMENT_UNLOCKED, message: "Taha unlocked Financial Mistake.", createdAt: hoursAgo(1) },
@@ -110,6 +111,7 @@ async function createUser(name: string, email: string, username: string, passwor
       weightKg,
       notificationStyle,
       onboardingCompleted: true,
+      ageConfirmedAt: new Date(),
     },
   });
 }

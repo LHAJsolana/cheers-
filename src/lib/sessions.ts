@@ -1,7 +1,6 @@
 import { ActivityType, type DrinkLog, type Session, type User } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-
-const SESSION_GAP_HOURS = 3;
+import { isSessionExpired, sessionExpiresAt } from "@/lib/session-rules";
 
 export async function closeExpiredSessions(userId?: string) {
   const openSessions = await prisma.session.findMany({
@@ -9,15 +8,11 @@ export async function closeExpiredSessions(userId?: string) {
     include: { drinkLogs: { orderBy: { loggedAt: "desc" } }, user: true },
   });
 
-  const now = Date.now();
   for (const session of openSessions) {
     const lastDrink = session.drinkLogs[0];
-    if (!lastDrink) continue;
+    if (!lastDrink || !isSessionExpired(lastDrink.loggedAt)) continue;
 
-    const expiresAt = lastDrink.loggedAt.getTime() + SESSION_GAP_HOURS * 60 * 60 * 1000;
-    if (now < expiresAt) continue;
-
-    const endTime = new Date(expiresAt);
+    const endTime = sessionExpiresAt(lastDrink.loggedAt);
     await prisma.session.update({
       where: { id: session.id },
       data: { endTime },

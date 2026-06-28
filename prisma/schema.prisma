@@ -20,6 +20,7 @@ model User {
   notificationStyle NotificationStyle @default(FUNNY)
   privacyDefault    Visibility   @default(FRIENDS)
   onboardingCompleted Boolean    @default(false)
+  ageConfirmedAt    DateTime?
   createdAt         DateTime     @default(now())
 
   drinkLogs          DrinkLog[]
@@ -43,6 +44,8 @@ model DrinkLog {
   price                 Float
   location              String?
   notes                 String?
+  drinkPhotoUrl         String?
+  placePhotoUrl         String?
   loggedAt              DateTime
   caloriesEstimate      Float
   alcoholGramsEstimate  Float

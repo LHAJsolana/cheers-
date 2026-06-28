@@ -1,6 +1,6 @@
 import { Redirect, router } from "expo-router";
 import { useState } from "react";
-import { Text, View } from "react-native";
+import { Switch, Text, View } from "react-native";
 import { Button, Card, ErrorText, Field, Label, Muted, Screen, Title } from "@/components/ui";
 import { endpoints } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -13,6 +13,7 @@ export default function OnboardingScreen() {
   const [weightKg, setWeightKg] = useState(String(user?.weightKg ?? 75));
   const [notificationStyle, setNotificationStyle] = useState("FUNNY");
   const [drinkingGoal, setDrinkingGoal] = useState("TRACK_ONLY");
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -20,10 +21,15 @@ export default function OnboardingScreen() {
   if (user.onboardingCompleted) return <Redirect href="/(tabs)/home" />;
 
   async function finish() {
+    if (!ageConfirmed) {
+      setError("Tap the 18+ badge to enter.");
+      return;
+    }
+
     setLoading(true);
     setError("");
     try {
-      const result = await endpoints.updateMe({ username, weightKg, notificationStyle, drinkingGoal, onboardingCompleted: true });
+      const result = await endpoints.updateMe({ username, weightKg, notificationStyle, drinkingGoal, ageConfirmed, onboardingCompleted: true });
       updateUser(result.user);
       router.replace("/(tabs)/home");
     } catch (err) {
@@ -63,6 +69,13 @@ export default function OnboardingScreen() {
           <Label>Goal</Label>
           <Title>What are we tracking?</Title>
           <Choice value={drinkingGoal} setValue={setDrinkingGoal} options={[["TRACK_ONLY", "Just tracking"], ["REDUCE_DRINKING", "Drink less"], ["SOBER_STREAK", "Sober streak"], ["SOCIAL_DISCOVERY", "Social nights"]]} />
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: "rgba(124,255,107,0.12)", borderRadius: 18, padding: 14 }}>
+            <View>
+              <Text style={{ color: colors.text, fontWeight: "900" }}>I'm 18+</Text>
+              <Muted>Old enough to enter the chaos.</Muted>
+            </View>
+            <Switch value={ageConfirmed} onValueChange={setAgeConfirmed} thumbColor={ageConfirmed ? colors.neon : colors.muted} />
+          </View>
           <ErrorText message={error} />
           <Button title="Finish" loading={loading} onPress={finish} />
           <Button title="Back" secondary onPress={() => setStep(2)} />

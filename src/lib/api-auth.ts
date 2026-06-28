@@ -32,8 +32,9 @@ export function publicUser(user: {
   gender: string | null;
   drinkingGoal: string;
   notificationStyle: string;
-  privacyDefault: string;
-  onboardingCompleted: boolean;
+    privacyDefault: string;
+    onboardingCompleted: boolean;
+    ageConfirmedAt?: Date | null;
 }) {
   return {
     id: user.id,
@@ -46,5 +47,6 @@ export function publicUser(user: {
     notificationStyle: user.notificationStyle,
     privacyDefault: user.privacyDefault,
     onboardingCompleted: user.onboardingCompleted,
+    ageConfirmedAt: user.ageConfirmedAt ?? null,
   };
 }
