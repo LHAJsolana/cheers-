@@ -11,13 +11,19 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.cheers.mobile"
+      "bundleIdentifier": "com.cheers.mobile",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.cheers.mobile",
       "adaptiveIcon": {
         "backgroundColor": "#050816"
-      }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "plugins": [
       "expo-router",
@@ -34,7 +40,11 @@
     "extra": {
       "router": {
         "origin": false
+      },
+      "eas": {
+        "projectId": "8eb51bc7-cc60-428c-af76-31cf2b577386"
       }
-    }
+    },
+    "owner": "lhaj37"
   }
 }
