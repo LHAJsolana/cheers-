@@ -1,8 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useActionState, useState } from "react";
-import { logDrinkAction, type ActionState } from "@/app/actions";
+import { useState, type FormEvent } from "react";
 import { drinkTypes, titleEnum, visibilities } from "@/lib/format";
 
 const drinkTemplates = [
@@ -15,11 +14,12 @@ const drinkTemplates = [
 ] as const;
 
 export function DrinkForm({ defaultVisibility }: { defaultVisibility: string }) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(logDrinkAction, {});
   const [drinkType, setDrinkType] = useState("BEER");
   const [drinkName, setDrinkName] = useState("");
   const [volumeMl, setVolumeMl] = useState("330");
   const [abv, setAbv] = useState("5");
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
   const now = new Date();
   const localDate = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 
@@ -30,8 +30,37 @@ export function DrinkForm({ defaultVisibility }: { defaultVisibility: string }) 
     setAbv(template.abv);
   }
 
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/web/drinks", {
+        method: "POST",
+        body: new FormData(event.currentTarget),
+      });
+      const result = await response.json().catch(() => null) as { error?: string } | null;
+
+      if (response.status === 401) {
+        window.location.assign("/login");
+        return;
+      }
+      if (!response.ok) {
+        setError(result?.error ?? "Could not log drink. Try again.");
+        return;
+      }
+
+      window.location.assign("/dashboard");
+    } catch {
+      setError("Could not reach Cheers. Check your connection and try again.");
+    } finally {
+      setPending(false);
+    }
+  }
+
   return (
-    <form action={action} className="card grid gap-4">
+    <form onSubmit={submit} className="card grid gap-4">
       <div className="grid gap-2">
         <label className="label">Quick templates</label>
         <p className="text-sm text-slate-400">Tap your drink, then adjust anything you need.</p>
@@ -114,7 +143,7 @@ export function DrinkForm({ defaultVisibility }: { defaultVisibility: string }) 
           {visibilities.map((visibility) => <option key={visibility} value={visibility}>{titleEnum(visibility)}</option>)}
         </select>
       </div>
-      {state.error ? <p className="text-sm text-ember">{state.error}</p> : null}
+      {error ? <p className="text-sm text-ember">{error}</p> : null}
       <button className="btn-primary" disabled={pending}>{pending ? "Logging..." : "Log drink"}</button>
     </form>
   );
